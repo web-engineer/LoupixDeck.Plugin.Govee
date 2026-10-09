@@ -374,8 +374,9 @@ public sealed class GoveePlugin : LoupixPlugin, IPluginSettingsPage, IMenuContri
             Key = "account",
             Label = "Govee account",
             Kind = PluginSettingKind.Heading,
-            Description = "Get a key in the Govee Home app: Profile › Settings › Apply for API Key; Govee emails it to you. " +
-                          "Asking for a new key switches off your old one, including in other apps that use it."
+            Description = "Govee lights need a free API key from Govee. In the Govee Home app: Profile › Settings › Apply for API Key, " +
+                          "fill in the short form, and Govee sends you the key. Already have one (e.g. for Home Assistant)? Use the same key: " +
+                          "asking for a new one switches off the old one everywhere."
         },
         new PluginSettingDescriptor
         {

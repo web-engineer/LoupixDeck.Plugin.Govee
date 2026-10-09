@@ -55,16 +55,48 @@ unzip it into the plugin folder:
 Restart LoupixDeck, then enable the plugin for your device under
 Plugins → Installed.
 
-## Connect your Govee account
+## Get a Govee API key (required)
 
-1. In the **Govee Home** app, go to Profile → Settings → **Apply for API Key**.
-   Govee emails you the key. See
-   [Govee's instructions](https://developer.govee.com/reference/apply-you-govee-api-key).
-2. In LoupixDeck, go to Settings → Plugins → Govee Lights. Paste the key into
-   **API key**, save, and press **Test connection**. It lists your lights.
+The plugin uses Govee's own API to find your lights and control them. Govee
+doesn't offer a "sign in with Govee" for other apps. Instead, each person asks
+Govee for a personal **API key** and pastes it into the plugin. The key is
+free, and you only need to get it once.
 
-Asking Govee for a new key switches off your old one, including in Home
-Assistant or any other app that uses it.
+1. Open the **Govee Home** app on your phone and sign in with the account your
+   lights are on.
+2. Go to your **Profile**, then **Settings**.
+3. Tap **Apply for API Key**.
+4. Fill in the short form (Govee asks who you are and what the key is for;
+   "Control my lights from a LoupixDeck controller" is fine), accept Govee's
+   API terms and submit.
+5. Govee sends you the key, usually by email. If it hasn't arrived, check
+   your spam folder.
+
+Govee's own (very brief) instructions are
+[here](https://developer.govee.com/reference/apply-you-govee-api-key).
+
+### Enter the key in LoupixDeck
+
+1. Go to **Settings → Plugins → Govee Lights**.
+2. Paste the key into **API key** and save.
+3. Press **Test connection**. It should list your lights by name. If it
+   says *API key rejected*, check you copied the whole key, and that it's
+   your newest one (see below).
+
+### Good to know
+
+- **One key per account. A new key switches off the old one.** Since May 2026,
+  asking Govee for another key immediately disables the previous one. That
+  includes the key in Home Assistant, Homebridge or any other app using it.
+  If you already use a key elsewhere, paste that same key here instead of
+  applying again.
+- **Your key stays on your computer.** It is stored in LoupixDeck's settings
+  for this plugin and is only ever sent to Govee, never to us or anyone else.
+  Treat it like a password: anyone with it can control your lights.
+- **Which lights work:** the key reaches the lights on your Govee account
+  that are connected over Wi-Fi; Bluetooth-only models can't be reached.
+  Govee's list of supported models is
+  [here](https://developer.govee.com/docs/support-product-model).
 
 **No lights to hand?** Turn on **Demo lights**. Three pretend lights (a strip,
 a floor lamp and a bulb) then behave like real ones, so you can set up and try
@@ -120,13 +152,18 @@ cloud.
 
 ## Testing against real lights without LoupixDeck
 
-`tools/GoveeProbe` is a small command-line tool that uses the same code as the
-plugin. It prints each light's state before and after every control, which is
-useful when the lights are somewhere you can't see them, for example over a
-VPN:
+`tools/GoveeProbe` is a developer tool, not something plugin users need. It is
+a small command-line program that uses the same code as the plugin and prints
+each light's state before and after every control. That makes it useful when
+the lights are somewhere you can't see them, for example over a VPN.
+
+It needs the same API key as the plugin. A command-line tool has no settings
+page, so it reads the key from the `GOVEE_API_KEY` environment variable. That
+also keeps the key out of your shell history and out of the command line other
+processes can see.
 
 ```sh
-export GOVEE_API_KEY=…            # stays out of your shell history
+read -rs GOVEE_API_KEY && export GOVEE_API_KEY   # paste the key; it isn't echoed
 dotnet run --project tools/GoveeProbe -- list
 dotnet run --project tools/GoveeProbe -- color "Desk strip" '#00FF00'
 dotnet run --project tools/GoveeProbe -- dial desk          # a fast dial turn: watch how few requests it sends
