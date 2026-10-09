@@ -1,0 +1,12 @@
+{
+  "id": "govee",
+  "name": "Govee Lights",
+  "version": "0.1.0",
+  "sdkVersion": "1.30.0",
+  "entryAssembly": "LoupixDeck.Plugin.Govee.dll",
+  "platform": "All",
+  "author": "web-engineer",
+  "description": "Control Govee lights from the deck: power, brightness, colour, white temperature, scenes and segments, with live state on the keys.",
+  "projectUrl": "https://github.com/web-engineer/govee-loupixdeck",
+  "iconFile": "icon.png"
+}
