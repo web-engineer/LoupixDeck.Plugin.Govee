@@ -16,10 +16,11 @@ Made by [**web-engineer**](https://www.web-engineer.co.uk/)
 This is an independent project and is not affiliated with or endorsed by
 Govee. Govee is a trademark of its owner.
 
-> **Status: early.** Every key, dial and page has been tested against the
-> built-in demo lights and against a simulated Govee server. It has not yet
-> been tested against real lights. Please report anything that behaves
-> differently on yours, and include the light's model (for example H6199).
+> **Tested on:** H6076 floor lamps, over the cloud and the LAN. Every key, dial
+> and page is also tested against the built-in demo lights and a simulated Govee
+> server. Govee models differ in what they offer, so please report anything
+> that behaves differently on yours, and include the light's model (for
+> example H6199).
 
 ## What you get
 
