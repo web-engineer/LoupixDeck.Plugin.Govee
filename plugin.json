@@ -7,6 +7,6 @@
   "platform": "All",
   "author": "web-engineer",
   "description": "Control Govee lights from the deck: power, brightness, colour, white temperature, scenes and segments, with live state on the keys.",
-  "projectUrl": "https://github.com/web-engineer/govee-loupixdeck",
+  "projectUrl": "https://github.com/web-engineer/LoupixDeck.Plugin.Govee",
   "iconFile": "icon.png"
 }

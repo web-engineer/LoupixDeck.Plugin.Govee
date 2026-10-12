@@ -118,8 +118,11 @@ public class LightServiceTests
             return Fail is null ? Task.CompletedTask : Task.FromException(Fail);
         }
 
+        /// <summary>The scene endpoint; returns nothing (so the capability list is used) unless set.</summary>
+        public Func<GoveeDevice, CancellationToken, Task<IReadOnlyList<NamedOption>>>? Scenes { get; set; }
+
         public Task<IReadOnlyList<NamedOption>> GetScenesAsync(GoveeDevice device, string instance, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<NamedOption>>([]);
+            Scenes?.Invoke(device, ct) ?? Task.FromResult<IReadOnlyList<NamedOption>>([]);
 
         public void Dispose()
         {
@@ -207,6 +210,43 @@ public class LightServiceTests
         Assert.Equal(2, service.Resolve($"{device.Id}+DE:MO:00:00:00:00:00:03").Count);
         Assert.Single(service.Resolve(device.Id.ToLowerInvariant()));
         Assert.Empty(service.Resolve("nope"));
+    }
+
+    [Fact]
+    public async Task A_group_lists_each_scene_and_music_mode_once()
+    {
+        var (service, _, _) = await Start();
+        using var owned = service;
+        var lights = service.Resolve("*");
+
+        var music = service.SharedOptions(lights, Capability.MusicMode);
+        Assert.Equal(["Energic", "Rhythm", "Spectrum", "Rolling"], music.Select(m => m.Name));
+
+        var scenes = service.SharedOptions(lights, Capability.LightScene);
+        Assert.NotEmpty(scenes);
+        Assert.Equal(scenes.Count, scenes.Select(s => s.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
+    [Fact]
+    public async Task A_scene_list_cut_short_is_fetched_again_next_time()
+    {
+        var (service, backend, device) = await Start();
+        using var owned = service;
+        var full = new NamedOption[] { new("Sunrise", JsonValue.Create(1)), new("Sunset", JsonValue.Create(2)) };
+        backend.Scenes = async (_, ct) =>
+        {
+            await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            return full;
+        };
+
+        using (var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(50)))
+        {
+            await service.GetScenesAsync(device, Capability.LightScene, cts.Token);
+        }
+        backend.Scenes = (_, _) => Task.FromResult<IReadOnlyList<NamedOption>>(full);
+
+        var scenes = await service.GetScenesAsync(device, Capability.LightScene, CancellationToken.None);
+        Assert.Equal(["Sunrise", "Sunset"], scenes.Select(s => s.Name));
     }
 
     [Fact]

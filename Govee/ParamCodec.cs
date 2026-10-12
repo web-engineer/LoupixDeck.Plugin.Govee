@@ -36,6 +36,20 @@ internal static class ParamCodec
         return value is null ? null : options.FirstOrDefault(o => JsonNode.DeepEquals(o.Value, value));
     }
 
+    /// <summary>A caption that survives the host's Name(a,b) command syntax.</summary>
+    public static string Caption(string text) =>
+        new string(text.Select(c => c is ',' or '(' or ')' ? ' ' : c).ToArray()).Trim();
+
+    /// <summary>
+    /// The option with this name (or with this name as <see cref="Caption"/> stored it), or null.
+    /// Lights of different models give the same scene different values, so a group matches by name.
+    /// </summary>
+    public static NamedOption? FindByName(IEnumerable<NamedOption> options, string? name) =>
+        string.IsNullOrWhiteSpace(name)
+            ? null
+            : options.FirstOrDefault(o => string.Equals(o.Name, name, StringComparison.OrdinalIgnoreCase)
+                                          || string.Equals(Caption(o.Name), name, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>
     /// Parses a segment list such as "0-4", "0+2+4" or "0-2+7" (0-based), keeping only indices
     /// within <paramref name="range"/>. Empty or "*" means every segment.

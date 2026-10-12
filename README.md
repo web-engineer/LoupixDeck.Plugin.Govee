@@ -1,4 +1,4 @@
-# govee-loupixdeck
+# LoupixDeck.Plugin.Govee
 
 A [LoupixDeck](https://github.com/RadiatorTwo/LoupixDeck) plugin for Govee
 lights. It lets you switch, dim, colour and set the white of your lights from
@@ -29,14 +29,16 @@ Govee. Govee is a trademark of its owner.
 | Brightness | Sets 10–100 %, or steps ±10 % | Turn to dim; the indicator shows the % |
 | Colour | 8 preset colours or any `#RRGGBB`. Ringed while the light shows that colour. | **Colour dial** goes round the colour wheel; **Saturation dial** goes from pastel to full colour |
 | White | 2200–6500 K, or steps ±500 K | Turn for warmer or cooler white |
-| Scenes, DIY scenes, snapshots | One key per scene, listed from your light | — |
-| Music modes | Energic, Rhythm, … (whatever the light offers) | — |
+| Scenes, DIY scenes, snapshots | One key per scene, listed from your light | **Scene dial** steps through the scenes, starting each one |
+| Music modes | Energic, Rhythm, … (whatever the light offers) | **Music mode dial** steps through the modes |
 | Features | Gradient, nightlight, a lamp's second light, … | — |
 | Segments | Colours some segments of a strip, e.g. `0-4` or `0+2+4` | — |
 | Controls page | Opens a page for one light: power, scenes, whites, colours, music and features. Pages page themselves; on this page dial 1 is brightness, dial 2 colour, dial 3 white and dial 4 saturation. | — |
 
 Every command also works on a **group**. Choose *All lights* in the menu, or
-join device ids with `+` in the Device field.
+join device ids with `+` in the Device field. A scene or music mode on a group
+starts each light's own scene of that name. A light that doesn't have that
+scene keeps what it is showing.
 
 ## Install
 
@@ -44,7 +46,7 @@ join device ids with `+` in the Device field.
 LoupixDeck → Plugins → Store and updates from there.
 
 **Manually.** Download `govee-<version>-any.zip` from the
-[Releases](https://github.com/web-engineer/govee-loupixdeck/releases) page and
+[Releases](https://github.com/web-engineer/LoupixDeck.Plugin.Govee/releases) page and
 unzip it into the plugin folder:
 
 | OS | Folder |
@@ -105,14 +107,24 @@ every key first.
 ## Add controls
 
 Add a key or dial as usual and open the **Govee** section of the command
-picker. Each light has its own folder:
+picker. At the top are controls for all your lights at once:
+
+- **On a touch key or button:** *Scenes, all lights* and *Music modes, all
+  lights*. Each lists every scene or mode any of your lights has.
+- **On a dial:** *Scenes dial, all lights* and *Music modes dial, all lights*.
+
+Below those, each light has its own folder. When two lights have the same name,
+the end of each one's device id is added so you can tell them apart.
 
 - **On a touch key or button:** Light on/off, Turn on, Turn off, Controls page,
   Brightness ›, Colours ›, Whites ›, Scenes ›, DIY scenes ›, Snapshots ›,
   Music modes ›, Features › and Segments ›.
-- **On a dial:** Brightness, Colour, White and Saturation dials. Each fills the
-  whole dial: turn left and right to adjust, press to switch the light on or
-  off. The same dials are offered as **dial presets**, one per light.
+- **On a dial:** Brightness, Colour, White, Saturation, Scenes and Music modes
+  dials. Each fills the whole dial: turn left and right to adjust, press to
+  switch the light on or off. The Scenes and Music modes dials start the next
+  scene or mode with each click and show its name; a fast turn only sends the
+  one it stops on. The same dials are offered as **dial presets**, one per
+  light, plus Scenes and Music modes for all lights.
 
 You can change a command's values in the button editor afterwards. For
 example, set a custom colour, change the dial step, or turn a toggle key into
@@ -206,7 +218,7 @@ the settings keys are stored in users' profiles. Never rename or reorder them.
 - Help: our public Slack and our tracker are linked from
   [web-engineer.co.uk/contact](https://web-engineer.co.uk/contact).
 - Bugs and feature requests:
-  [GitHub issues](https://github.com/web-engineer/govee-loupixdeck/issues).
+  [GitHub issues](https://github.com/web-engineer/LoupixDeck.Plugin.Govee/issues).
 - Security issues: please report them privately; see [SECURITY.md](SECURITY.md).
 
 ## Licence

@@ -199,7 +199,12 @@ internal sealed class LightService : IDisposable
         {
             options = await _backend.GetScenesAsync(device, instance, ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is GoveeException or OperationCanceledException)
+        catch (OperationCanceledException)
+        {
+            // Out of time (a menu waits only so long): use what we have, and ask again next time.
+            return CachedScenes(device, instance);
+        }
+        catch (GoveeException ex)
         {
             _error($"Could not list {instance} for {device}: {ex.Message}", null);
             options = [];
@@ -208,6 +213,23 @@ internal sealed class LightService : IDisposable
         _scenes[(device.Id, instance)] = (DateTimeOffset.UtcNow, options);
         return options;
     }
+
+    /// <summary>A light's scenes of one kind, or its music modes for <c>musicMode</c>, from the cache.</summary>
+    public IReadOnlyList<NamedOption> CachedOptions(GoveeDevice device, string instance) =>
+        instance == Capability.MusicMode ? device.MusicModes : CachedScenes(device, instance);
+
+    /// <summary>Fetches the scene lists of every light that has them, side by side. Music modes need no fetch.</summary>
+    public Task LoadOptionsAsync(IEnumerable<GoveeDevice> devices, string instance, CancellationToken ct) =>
+        instance == Capability.MusicMode
+            ? Task.CompletedTask
+            : Task.WhenAll(devices.Where(d => d.Has(instance)).Select(d => GetScenesAsync(d, instance, ct)));
+
+    /// <summary>
+    /// The scenes (or music modes) of a group, by name, in the order its lights list them: a name
+    /// counts when any light has it. Values differ between models, so they are looked up per light.
+    /// </summary>
+    public IReadOnlyList<NamedOption> SharedOptions(IReadOnlyList<GoveeDevice> devices, string instance) =>
+        devices.SelectMany(d => CachedOptions(d, instance)).DistinctBy(o => o.Name, StringComparer.OrdinalIgnoreCase).ToList();
 
     public async Task<IReadOnlyList<GoveeDevice>> RefreshDevicesAsync(CancellationToken ct)
     {

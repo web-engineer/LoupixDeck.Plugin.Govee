@@ -65,6 +65,16 @@ public class ParamCodecTests
         Assert.Null(ParamCodec.FindOption(options, "not-base64!"));
     }
 
+    [Fact]
+    public void Finds_the_option_by_name_as_a_key_stored_it()
+    {
+        var options = new[] { new NamedOption("Sunrise", JsonValue.Create(3054)), new NamedOption("Rain (soft), night", JsonValue.Create(3060)) };
+        Assert.Equal("Sunrise", ParamCodec.FindByName(options, "sunrise")?.Name);
+        Assert.Equal(3060, ParamCodec.FindByName(options, ParamCodec.Caption("Rain (soft), night"))?.Value.GetValue<int>());
+        Assert.Null(ParamCodec.FindByName(options, "Aurora"));
+        Assert.Null(ParamCodec.FindByName(options, null));
+    }
+
     [Theory]
     [InlineData("0-4", new[] { 0, 1, 2, 3, 4 })]
     [InlineData("0+2+4", new[] { 0, 2, 4 })]

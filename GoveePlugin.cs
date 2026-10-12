@@ -23,7 +23,7 @@ public sealed class GoveePlugin : LoupixPlugin, IPluginSettingsPage, IMenuContri
     private const string DeviceCacheKey = "device_cache";
 
     private const string SupportUrl = "https://web-engineer.co.uk/contact";
-    private const string IssuesUrl = "https://github.com/web-engineer/govee-loupixdeck/issues";
+    private const string IssuesUrl = "https://github.com/web-engineer/LoupixDeck.Plugin.Govee/issues";
     private const string ApiKeyHelpUrl = "https://developer.govee.com/reference/apply-you-govee-api-key";
 
     private const int DefaultPollSeconds = 60;
@@ -98,6 +98,8 @@ public sealed class GoveePlugin : LoupixPlugin, IPluginSettingsPage, IMenuContri
         new DialCommand(this, DialCommand.Property.Temperature),
         new DialCommand(this, DialCommand.Property.Hue),
         new DialCommand(this, DialCommand.Property.Saturation),
+        new StepDialCommand(this, music: false),
+        new StepDialCommand(this, music: true),
         new SetBrightnessCommand(this),
         new SetColorCommand(this),
         new SetWhiteCommand(this),
@@ -126,34 +128,59 @@ public sealed class GoveePlugin : LoupixPlugin, IPluginSettingsPage, IMenuContri
         }
     }
 
-    // ---- dial presets: one per light and property ----
+    // ---- dial presets: one per light and kind of dial, plus scenes and music for all lights ----
 
     public override IEnumerable<DialPresetDescriptor> GetDialPresets()
     {
         if (_lights is null) yield break;
-        foreach (var device in _lights.Lights)
+        var lights = _lights.Lights.ToList();
+        var names = MenuNames(lights);
+        foreach (var device in lights)
         {
-            foreach (var (property, label, glyph, supported) in DialKinds(device))
+            foreach (var kind in DialKinds(device))
             {
-                if (!supported) continue;
+                if (!kind.Supported) continue;
                 yield return new DialPresetDescriptor
                 {
-                    Id = $"{property}:{device.Id}",
-                    Name = $"{device.Name} · {label}",
-                    Glyph = glyph,
-                    Actions = WholeDial(DialCommand.NameOf(property), device.Id)
+                    Id = $"{kind.Id}:{device.Id}",
+                    Name = $"{names[device.Id]} · {kind.Label}",
+                    Glyph = kind.Glyph,
+                    Actions = WholeDial(kind.Command, device.Id)
+                };
+            }
+        }
+
+        if (lights.Count > 1)
+        {
+            foreach (var kind in ListDialKinds(lights))
+            {
+                yield return new DialPresetDescriptor
+                {
+                    Id = $"{kind.Id}:{DeviceSelector.All}",
+                    Name = $"All lights · {kind.Label}",
+                    Glyph = kind.Glyph,
+                    Actions = WholeDial(kind.Command, DeviceSelector.All)
                 };
             }
         }
     }
 
-    private static IEnumerable<(DialCommand.Property Property, string Label, string Glyph, bool Supported)> DialKinds(GoveeDevice device) =>
+    private sealed record DialKind(string Id, string Command, string Label, string Glyph, bool Supported);
+
+    private static IEnumerable<DialKind> DialKinds(GoveeDevice device) =>
     [
-        (DialCommand.Property.Brightness, "Brightness", Glyphs.Brightness, device.CanDim),
-        (DialCommand.Property.Hue, "Colour", Glyphs.Hue, device.CanColor),
-        (DialCommand.Property.Temperature, "White", Glyphs.WhiteBalance, device.CanWhite),
-        (DialCommand.Property.Saturation, "Saturation", Glyphs.Saturation, device.CanColor)
+        new(nameof(DialCommand.Property.Brightness), DialCommand.BrightnessName, "Brightness", Glyphs.Brightness, device.CanDim),
+        new(nameof(DialCommand.Property.Hue), DialCommand.HueName, "Colour", Glyphs.Hue, device.CanColor),
+        new(nameof(DialCommand.Property.Temperature), DialCommand.TemperatureName, "White", Glyphs.WhiteBalance, device.CanWhite),
+        new(nameof(DialCommand.Property.Saturation), DialCommand.SaturationName, "Saturation", Glyphs.Saturation, device.CanColor),
+        new("Scene", StepDialCommand.SceneName, "Scenes", Glyphs.Scene, device.Has(Capability.LightScene)),
+        new("Music", StepDialCommand.MusicName, "Music modes", Glyphs.Music, device.MusicModes.Count > 0)
     ];
+
+    /// <summary>The scene and music dials a group gets, when any of its lights has them.</summary>
+    private static IEnumerable<DialKind> ListDialKinds(IReadOnlyList<GoveeDevice> devices) =>
+        DialKinds(devices[0]).Where(k => k.Command is StepDialCommand.SceneName or StepDialCommand.MusicName)
+            .Where(k => devices.Any(d => DialKinds(d).Any(o => o.Command == k.Command && o.Supported)));
 
     private static Dictionary<RotaryAction, MenuCommandRef> WholeDial(string command, string selector) =>
         Enum.GetValues<RotaryAction>().ToDictionary(a => a, _ => new MenuCommandRef
@@ -162,9 +189,16 @@ public sealed class GoveePlugin : LoupixPlugin, IPluginSettingsPage, IMenuContri
             Parameters = new Dictionary<string, string> { [GoveeCommandBase.DeviceParameter] = selector }
         });
 
-    // ---- IMenuContributor: Govee › light › action ----
+    // ---- IMenuContributor: Govee › (scenes and music for all lights) › light › action ----
 
-    public async Task<IReadOnlyList<MenuNode>> GetMenuNodes(ButtonTargets target)
+    /// <summary>
+    /// The host turns each top-level node into a group of its own, so everything goes inside one node
+    /// named after the plugin's group, which the host merges into that group's card.
+    /// </summary>
+    public async Task<IReadOnlyList<MenuNode>> GetMenuNodes(ButtonTargets target) =>
+        [new MenuNode { Name = GroupName, Children = await BuildMenuNodesAsync(target).ConfigureAwait(false) }];
+
+    private async Task<IReadOnlyList<MenuNode>> BuildMenuNodesAsync(ButtonTargets target)
     {
         if (!_applied.Demo && string.IsNullOrWhiteSpace(_applied.ApiKey))
         {
@@ -187,13 +221,25 @@ public sealed class GoveePlugin : LoupixPlugin, IPluginSettingsPage, IMenuContri
         }
 
         var rotary = target.HasFlag(ButtonTargets.RotaryEncoder);
+        var names = MenuNames(lights);
         var nodes = new List<MenuNode>();
-        foreach (var device in lights.OrderBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase))
+        if (rotary)
+        {
+            nodes.AddRange(ListDialKinds(lights).Select(k =>
+                new MenuNode { Name = $"{k.Label} dial, all lights (turn to step, press for on/off)", RotaryGroup = WholeDial(k.Command, DeviceSelector.All) }));
+        }
+        else
+        {
+            await LoadScenesAsync(lights).ConfigureAwait(false);
+            nodes.AddRange(AllLightsListNodes(lights));
+        }
+
+        foreach (var device in lights.OrderBy(d => names[d.Id], StringComparer.CurrentCultureIgnoreCase))
         {
             nodes.Add(new MenuNode
             {
-                Name = device.Name,
-                Children = rotary ? DialNodes(device.Id, [device]) : await KeyNodesAsync(device).ConfigureAwait(false)
+                Name = names[device.Id],
+                Children = rotary ? DialNodes(device.Id, [device], lists: true) : KeyNodes(device)
             });
         }
 
@@ -202,51 +248,82 @@ public sealed class GoveePlugin : LoupixPlugin, IPluginSettingsPage, IMenuContri
             nodes.Add(new MenuNode
             {
                 Name = "All lights",
-                Children = rotary ? DialNodes(DeviceSelector.All, lights) : GroupKeyNodes(DeviceSelector.All, lights)
+                Children = rotary ? DialNodes(DeviceSelector.All, lights, lists: false) : GroupKeyNodes(DeviceSelector.All, lights)
             });
         }
         return nodes;
     }
 
-    private static List<MenuNode> DialNodes(string selector, IReadOnlyList<GoveeDevice> devices)
+    /// <summary>
+    /// Menu names for lights: their own name, with the end of the device id added when two lights
+    /// share a name (two lamps of one model often do).
+    /// </summary>
+    private static Dictionary<string, string> MenuNames(IReadOnlyList<GoveeDevice> lights)
+    {
+        var shared = lights.GroupBy(d => d.Name, StringComparer.CurrentCultureIgnoreCase)
+            .Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet(StringComparer.CurrentCultureIgnoreCase);
+        return lights.ToDictionary(d => d.Id, d => shared.Contains(d.Name) ? $"{d.Name} · {d.Id[Math.Max(0, d.Id.Length - 5)..]}" : d.Name);
+    }
+
+    /// <summary>Fetches every light's scene lists side by side, within the time a menu may take.</summary>
+    private async Task LoadScenesAsync(IReadOnlyList<GoveeDevice> lights)
+    {
+        using var cts = new CancellationTokenSource(MenuSceneTimeout);
+        await Task.WhenAll(LightFolders.SceneKinds.Select(k => _lights.LoadOptionsAsync(lights, k.Instance, cts.Token))).ConfigureAwait(false);
+    }
+
+    /// <summary>Scenes and music modes for every light at once, matched by name on each light.</summary>
+    private IEnumerable<MenuNode> AllLightsListNodes(IReadOnlyList<GoveeDevice> lights)
+    {
+        var scenes = _lights.SharedOptions(lights, Capability.LightScene);
+        if (scenes.Count > 0)
+        {
+            yield return Folder("Scenes, all lights", scenes.Select(s =>
+                Leaf(s.Name, SceneCommand.Name, DeviceSelector.All, ("Kind", Capability.LightScene), ("Scene", ParamCodec.EncodeValue(s.Value)), ("Name", ParamCodec.Caption(s.Name)))));
+        }
+
+        var music = _lights.SharedOptions(lights, Capability.MusicMode);
+        if (music.Count > 0)
+        {
+            yield return Folder("Music modes, all lights", music.Select(m =>
+                Leaf(m.Name, MusicCommand.Name, DeviceSelector.All, ("Mode", ParamCodec.EncodeValue(m.Value)), ("Name", ParamCodec.Caption(m.Name)), ("Sensitivity", "100"))));
+        }
+    }
+
+    private static List<MenuNode> DialNodes(string selector, IReadOnlyList<GoveeDevice> devices, bool lists)
     {
         var nodes = new List<MenuNode>();
-        foreach (var (property, label, _, _) in DialKinds(devices[0]))
+        foreach (var kind in DialKinds(devices[0]))
         {
+            var stepper = kind.Command is StepDialCommand.SceneName or StepDialCommand.MusicName;
+            // The scene and music dials for all lights sit at the top of the menu instead.
+            if (stepper && !lists) continue;
             // Offered when at least one light of the group has it; the others ignore it.
-            if (!devices.Any(d => DialKinds(d).Any(k => k.Property == property && k.Supported))) continue;
-            nodes.Add(new MenuNode { Name = $"{label} dial (turn, press for on/off)", RotaryGroup = WholeDial(DialCommand.NameOf(property), selector) });
+            if (!devices.Any(d => DialKinds(d).Any(k => k.Command == kind.Command && k.Supported))) continue;
+            var hint = stepper ? "turn to step, press for on/off" : "turn, press for on/off";
+            nodes.Add(new MenuNode { Name = $"{kind.Label} dial ({hint})", RotaryGroup = WholeDial(kind.Command, selector) });
         }
         nodes.Add(Leaf("Light on/off (press)", PowerCommand.Name, selector, ("Action", "toggle")));
         return nodes;
     }
 
-    private async Task<List<MenuNode>> KeyNodesAsync(GoveeDevice device)
+    private List<MenuNode> KeyNodes(GoveeDevice device)
     {
         var nodes = GroupKeyNodes(device.Id, [device]);
 
         foreach (var (instance, label, _) in LightFolders.SceneKinds)
         {
             if (!device.Has(instance)) continue;
-            IReadOnlyList<NamedOption> scenes;
-            try
-            {
-                using var cts = new CancellationTokenSource(MenuSceneTimeout);
-                scenes = await _lights.GetScenesAsync(device, instance, cts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                scenes = _lights.CachedScenes(device, instance);
-            }
+            var scenes = _lights.CachedScenes(device, instance);
             if (scenes.Count == 0) continue;
             nodes.Add(Folder(label, scenes.Select(s =>
-                Leaf(s.Name, SceneCommand.Name, device.Id, ("Kind", instance), ("Scene", ParamCodec.EncodeValue(s.Value)), ("Name", Safe(s.Name))))));
+                Leaf(s.Name, SceneCommand.Name, device.Id, ("Kind", instance), ("Scene", ParamCodec.EncodeValue(s.Value)), ("Name", ParamCodec.Caption(s.Name))))));
         }
 
         if (device.MusicModes.Count > 0)
         {
             nodes.Add(Folder("Music modes", device.MusicModes.Select(m =>
-                Leaf(m.Name, MusicCommand.Name, device.Id, ("Mode", ParamCodec.EncodeValue(m.Value)), ("Name", Safe(m.Name)), ("Sensitivity", "100")))));
+                Leaf(m.Name, MusicCommand.Name, device.Id, ("Mode", ParamCodec.EncodeValue(m.Value)), ("Name", ParamCodec.Caption(m.Name)), ("Sensitivity", "100")))));
         }
 
         if (device.Toggles.Any())
@@ -305,9 +382,6 @@ public sealed class GoveePlugin : LoupixPlugin, IPluginSettingsPage, IMenuContri
     private static MenuNode Folder(string name, IEnumerable<MenuNode> children) => new() { Name = name, Children = children.ToList() };
 
     private static MenuNode Info(string text) => new() { Name = text };
-
-    /// <summary>A caption that survives the host's Name(a,b) command syntax.</summary>
-    private static string Safe(string text) => new string(text.Select(c => c is ',' or '(' or ')' ? ' ' : c).ToArray()).Trim();
 
     // ---- device cache ----
 

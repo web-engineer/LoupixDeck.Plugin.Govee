@@ -7,36 +7,44 @@ namespace LoupixDeck.Plugin.Govee.Commands;
 /// <summary>
 /// Starts one of a light's scenes, DIY scenes or snapshots. Kind is the Govee capability
 /// (<c>lightScene</c>, <c>diyScene</c> or <c>snapshot</c>) and Scene the encoded value the device
-/// menu fills in; Name is only the key's caption. Govee never reports which scene is running, so
-/// the key lights up for the scene last started from the deck.
+/// menu fills in; Name is the key's caption. Govee never reports which scene is running, so the key
+/// lights up for the scene last started from the deck. On a group, each light starts its own scene
+/// of that name (models number their scenes differently); a light without one keeps what it shows.
 /// </summary>
 internal sealed class SceneCommand(GoveePlugin plugin) : GoveeCommandBase(plugin), IDisplayImageCommand
 {
     public const string Name = "Govee.Scene";
 
     public override CommandDescriptor Descriptor { get; } = Describe(Name, "Start scene", Glyphs.Scene,
-        "Starts a scene, DIY scene or snapshot. Pick it from the light's menu.",
+        "Starts a scene, DIY scene or snapshot. Pick it from the light's menu, or from Scenes for all lights.",
         Device(), new CommandParameter("Kind", typeof(string)) { DefaultValue = Capability.LightScene },
         new CommandParameter("Scene", typeof(string)), new CommandParameter("Name", typeof(string)));
 
-    public override Task Execute(CommandContext ctx)
+    public override async Task Execute(CommandContext ctx)
     {
         var kind = Param(ctx, 1) ?? Capability.LightScene;
         var token = Param(ctx, 2);
+        var name = Param(ctx, 3);
         var value = ParamCodec.DecodeValue(token);
-        if (value is null)
+        if (value is null && name is null)
         {
             Hint(ctx, "Pick a scene from the menu");
-            return Task.CompletedTask;
+            return;
         }
 
-        return ForEachLight(ctx, device =>
+        var devices = Targets(ctx);
+        var group = devices.Count > 1;
+        if (group) await Lights.LoadOptionsAsync(devices, kind, CancellationToken.None).ConfigureAwait(false);
+
+        await ForEachLight(ctx, device =>
         {
-            // Prefer the device's own name for the scene; fall back to the key's caption.
-            var option = ParamCodec.FindOption(Lights.CachedScenes(device, kind), token)
-                         ?? new NamedOption(Param(ctx, 3) ?? "Scene", value);
-            Lights.StartScene(device, kind, option);
-        });
+            var scenes = Lights.CachedScenes(device, kind);
+            // Prefer the device's own entry for the scene; a single light falls back to the stored value.
+            var option = ParamCodec.FindOption(scenes, token)
+                         ?? ParamCodec.FindByName(scenes, name)
+                         ?? (!group && value is not null ? new NamedOption(name ?? "Scene", value) : null);
+            if (option is not null) Lights.StartScene(device, kind, option);
+        }).ConfigureAwait(false);
     }
 
     public bool RenderImage(CommandContext ctx, IRenderCanvas canvas)
@@ -70,11 +78,15 @@ internal sealed class MusicCommand(GoveePlugin plugin) : GoveeCommandBase(plugin
     public override Task Execute(CommandContext ctx)
     {
         var token = Param(ctx, 1);
+        var name = Param(ctx, 2);
         var sensitivity = IntParam(ctx, 3, 100);
+        var group = Targets(ctx).Count > 1;
         return ForEachLight(ctx, device =>
         {
+            // As with scenes, a group matches each light's mode by name.
             var mode = ParamCodec.FindOption(device.MusicModes, token)
-                       ?? (ParamCodec.DecodeValue(token) is { } value ? new NamedOption(Param(ctx, 2) ?? "Music", value) : null);
+                       ?? ParamCodec.FindByName(device.MusicModes, name)
+                       ?? (!group && ParamCodec.DecodeValue(token) is { } value ? new NamedOption(name ?? "Music", value) : null);
             if (mode is not null) Lights.SetMusicMode(device, mode, sensitivity);
         });
     }
